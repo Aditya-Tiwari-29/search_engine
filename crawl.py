@@ -2,6 +2,7 @@ import sqlite3
 import urllib.error
 from urllib.parse import urlparse
 from urllib.request import urlopen
+from urllib.parse import urljoin
 import ssl
 from bs4 import BeautifulSoup
 
@@ -23,7 +24,7 @@ cur.execute('''CREATE TABLE IF NOT EXISTS Links
                (from_id INTEGER ,to_id INTEGER,UNIQUE (from_id,to_id))''')
 
 #create table Webs
-cur.execute('CREATE TABLE IF NOT EXISTS Webs (url TEXT UNIQUE)'')
+cur.execute('CREATE TABLE IF NOT EXISTS Webs (url TEXT UNIQUE)')
 
 #checking if we are already in progress
 cur.execute('''SELECT id,url FROM Pages WHERE html is NULL and error is NULL
@@ -40,11 +41,11 @@ else:
         pos=starturl.rfind('/')
         web=starturl[:pos]
     if(len(web)>1):
-        cur.execute('INSERT OR IGNORE INTO Webs (url) VALUES (?)'(web,))
-        cur.execute('INSERT OR IGNORE INTO Pages (url,html,newrank) VALUES (?,NULL,1.0)'(web,))
+        cur.execute('INSERT OR IGNORE INTO Webs (url) VALUES (?)',(web,))
+        cur.execute('INSERT OR IGNORE INTO Pages (url,html,newrank) VALUES (?,NULL,1.0)',(starturl,))
         conn.commit()
 #get the current Webs
-cur.execute('SELECT url FROM Webs')
+cur.execute('''SELECT url FROM Webs''')
 webs=list()
 for row in cur:
     webs.append(str(row[0]))
@@ -55,12 +56,12 @@ many=0
 while True:
     if (many<1):
         sval=input('HOW MANY PAGES:')
-        if len(sval)<1:break
+        if len(sval)<1 : break
         many=int(sval)
-    many=many-1
+    many=many - 1
 
     cur.execute('''SELECT id,url FROM Pages WHERE html is NULL and
-    error iss NULL''')
+    error is NULL ORDER BY RANDOM() LIMIT 1''')
 
     try:
         row=cur.fetchone()
@@ -87,6 +88,7 @@ while True:
 
         print('('+str(len(html))+')', end=' ')
 
+        soup = BeautifulSoup(html, "html.parser" )
     except KeyboardInterrupt:
         print('')
         print('Program interrupted by user...')
@@ -97,14 +99,14 @@ while True:
         conn.commit()
         continue
 
-    cur.execute('''INSERT OR IGNORE INTO Pages (url,html,newrank)
-     VALUES (?,NULL,1.0)''',(url,))
+    cur.execute('INSERT OR IGNORE INTO Pages (url,html,newrank) VALUES (?,NULL,1.0)',(url,))
     cur.execute('UPDATE Pages SET html=? WHERE url=?',(memoryview(html),url))
-    soup=BeautifulSoup(html,"html.parser")
+    conn.commit()
+
     tags=soup('a')
     count=0
     for tag in tags:
-        href=tag.get('href',None)
+        href=tag.get('href', None)
         #some error checks and removals
         if ( href is None ) : continue
         # Resolve relative references like href="/contact"
@@ -121,23 +123,23 @@ while True:
         #check if url is in any of the Webs
         found=False
         for web in webs:
-            if (href.startswith('web')):
+            if (href.startswith(web)):
                 found=True
                 break
         if not found : continue
 
-        cur.execute('''INSERT OR IGNORE INTO Pages (url,html,newrank) VALUES (?,NULL,1.0)''',(href,))
+        cur.execute('INSERT OR IGNORE INTO Pages (url,html,newrank) VALUES (?,NULL,1.0)',(href,))
         count=count+1
         conn.commit()
 
-        cur.execute('SELECT id FROM Pages WHERE url=?',(href,))
+        cur.execute('SELECT id FROM Pages WHERE url=? LIMIT 1',(href,))
         try:
             row=cur.fetchone()
             toid=row[0]
         except:
-            print('could not retrieve id')\
+            print('could not retrieve id')
             continue
-        cur.execute('INSERT OR IGNORE INTO Lnks (from_id,to_id) VALUES(?,?)',(fromid,toid))
+        cur.execute('INSERT OR IGNORE INTO Links (from_id,to_id) VALUES(?,?)',(fromid,toid))
 
 
     print(count)
